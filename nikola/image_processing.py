@@ -39,7 +39,7 @@ from nikola import utils
 
 Image = None
 try:
-    from PIL import ExifTags, Image  # NOQA
+    from PIL import ExifTags, Image, ImageOps  # NOQA
 except ImportError:
     try:
         import ExifTags
@@ -92,19 +92,20 @@ class ImageProcessor(object):
 
         return exif or None
 
-    def resize_image(self, src, dst, max_size, bigger_panoramas=True, preserve_exif_data=False, exif_whitelist={}):
+    def resize_image(self, src, dst, config_size, bigger_panoramas=True, preserve_exif_data=False, exif_whitelist={}):
         """Make a copy of the image in the requested size."""
         if not Image or os.path.splitext(src)[1] in ['.svg', '.svgz']:
-            self.resize_svg(src, dst, max_size, bigger_panoramas)
+            self.resize_svg(src, dst, config_size, bigger_panoramas)
             return
         im = Image.open(src)
         size = w, h = im.size
-        if w > max_size or h > max_size:
-            size = max_size, max_size
+        if not isinstance(config_size, tuple):
+            if w > config_size or h > config_size:
+                size = config_size, config_size
 
-            # Panoramas get larger thumbnails because they look *awful*
-            if bigger_panoramas and w > 2 * h:
-                size = min(w, max_size * 4), min(w, max_size * 4)
+                # Panoramas get larger thumbnails because they look *awful*
+                if bigger_panoramas and w > 2 * h:
+                    size = min(w, config_size * 4), min(w, config_size * 4)
 
         try:
             exif = piexif.load(im.info["exif"])
@@ -126,7 +127,11 @@ class ImageProcessor(object):
             exif['0th'][piexif.ImageIFD.Orientation] = 1
 
         try:
-            im.thumbnail(size, Image.ANTIALIAS)
+            if isinstance(config_size, tuple):
+                im = ImageOps.fit(im, config_size, Image.ANTIALIAS, centering=(0.5, 0.5))
+            else:
+                im.thumbnail(size, Image.ANTIALIAS)
+
             if exif is not None and preserve_exif_data:
                 # Put right size in EXIF data
                 w, h = im.size
